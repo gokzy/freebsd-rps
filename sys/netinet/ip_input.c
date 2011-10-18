@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_ipstealth.h"
 #include "opt_ipsec.h"
 #include "opt_route.h"
+#include "opt_rps.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -144,6 +145,9 @@ static struct netisr_handler ip_nh = {
 	.nh_handler = ip_input,
 	.nh_proto = NETISR_IP,
 	.nh_policy = NETISR_POLICY_FLOW,
+#ifdef RPS
+	.nh_dispatch = NETISR_DISPATCH_DEFERRED,
+#endif
 };
 
 extern	struct domain inetdomain;
