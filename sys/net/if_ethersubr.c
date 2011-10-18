@@ -36,6 +36,7 @@
 #include "opt_ipx.h"
 #include "opt_netgraph.h"
 #include "opt_mbuf_profiling.h"
+#include "opt_rps.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -81,6 +82,14 @@
 #ifdef IPX
 #include <netipx/ipx.h>
 #include <netipx/ipx_if.h>
+#endif
+
+#ifdef RPS
+#include <netinet/ip.h>
+#include <netinet/ip6.h>
+#include <netinet/tcp.h>
+#include <netinet/udp.h>
+#include <libkern/jhash.h>
 #endif
 
 int (*ef_inputp)(struct ifnet*, struct ether_header *eh, struct mbuf *m);
@@ -148,6 +157,15 @@ static VNET_DEFINE(int, ether_ipfw);
 #define	V_ether_ipfw	VNET(ether_ipfw)
 #endif
 
+#ifdef RPS
+static int jhash_initval;
+static void
+jhash_initval_init(void)
+{
+	jhash_initval = arc4random();
+}
+SYSINIT(jhash_initval_init, SI_SUB_CLOCKS, SI_ORDER_MIDDLE, jhash_initval_init, NULL);
+#endif
 
 /*
  * Ethernet output routine.
@@ -872,6 +890,42 @@ ether_demux(struct ifnet *ifp, struct mbuf *m)
 	case ETHERTYPE_IP:
 		if ((m = ip_fastforward(m)) == NULL)
 			return;
+#ifdef RPS
+		{
+			struct ip *ip = NULL;
+			struct tcphdr *th = NULL;
+			struct udphdr *uh = NULL;
+			union {
+			        uint32_t ports;
+			        uint16_t port[2];
+			} tp_ports;
+
+			if (m->m_flags & M_FLOWID)
+				goto ipv4_rps_out;
+
+                        ip = mtod(m, struct ip *);
+
+                        switch (ip->ip_p){
+			case IPPROTO_TCP:
+				th = (struct tcphdr *)((caddr_t)ip + (ip->ip_hl << 2));
+				tp_ports.port[0] = th->th_sport;
+				tp_ports.port[1] = th->th_dport;
+				break;
+			case IPPROTO_UDP:
+				uh = (struct udphdr *)((caddr_t)ip + (ip->ip_hl << 2));
+				tp_ports.port[0] = uh->uh_sport;
+				tp_ports.port[1] = uh->uh_dport;
+				break;
+			default:
+				tp_ports.ports = 0;
+			}
+
+			m->m_pkthdr.flowid = jhash_3words(ip->ip_src.s_addr,ip->ip_dst.s_addr,
+							  tp_ports.ports, jhash_initval);
+			m->m_flags |= M_FLOWID;
+		}
+ipv4_rps_out:
+#endif
 		isr = NETISR_IP;
 		break;
 
@@ -893,6 +947,43 @@ ether_demux(struct ifnet *ifp, struct mbuf *m)
 #endif
 #ifdef INET6
 	case ETHERTYPE_IPV6:
+#ifdef RPS
+		{
+			struct ip6_hdr *ip6 = NULL;
+			struct tcphdr *th = NULL;
+			struct udphdr *uh = NULL;
+			union {
+			        uint32_t ports;
+			        uint16_t port[2];
+			} tp_ports;
+
+			if (m->m_flags & M_FLOWID)
+				goto ipv6_rps_out;
+
+                        ip6 = mtod(m, struct ip6_hdr *);
+
+                        switch (ip6->ip6_nxt){
+			case IPPROTO_TCP:
+				th = (struct tcphdr *)((caddr_t)ip6 + sizeof(struct ip6_hdr));
+				tp_ports.port[0] = th->th_sport;
+				tp_ports.port[1] = th->th_dport;
+				break;
+			case IPPROTO_UDP:
+				uh = (struct udphdr *)((caddr_t)ip6 + sizeof(struct ip6_hdr));
+				tp_ports.port[0] = uh->uh_sport;
+				tp_ports.port[1] = uh->uh_dport;
+				break;
+			default:
+				tp_ports.ports = 0;
+			}
+
+			m->m_pkthdr.flowid = jhash_3words(ip6->ip6_src.s6_addr32[0],
+							  ip6->ip6_dst.s6_addr32[0],
+							  tp_ports.ports, jhash_initval);
+			m->m_flags |= M_FLOWID;
+		}
+ipv6_rps_out:
+#endif
 		isr = NETISR_IPV6;
 		break;
 #endif
