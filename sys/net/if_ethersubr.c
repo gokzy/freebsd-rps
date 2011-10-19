@@ -896,16 +896,16 @@ ether_demux(struct ifnet *ifp, struct mbuf *m)
 			struct tcphdr *th = NULL;
 			struct udphdr *uh = NULL;
 			union {
-			        uint32_t ports;
-			        uint16_t port[2];
+				uint32_t ports;
+				uint16_t port[2];
 			} tp_ports;
 
 			if (m->m_flags & M_FLOWID)
 				goto ipv4_rps_out;
 
-                        ip = mtod(m, struct ip *);
+			ip = mtod(m, struct ip *);
 
-                        switch (ip->ip_p){
+			switch (ip->ip_p){
 			case IPPROTO_TCP:
 				th = (struct tcphdr *)((caddr_t)ip + (ip->ip_hl << 2));
 				tp_ports.port[0] = th->th_sport;
@@ -921,7 +921,7 @@ ether_demux(struct ifnet *ifp, struct mbuf *m)
 			}
 
 			m->m_pkthdr.flowid = jhash_3words(ip->ip_src.s_addr,ip->ip_dst.s_addr,
-							  tp_ports.ports, jhash_initval);
+			    tp_ports.ports, jhash_initval);
 			m->m_flags |= M_FLOWID;
 		}
 ipv4_rps_out:
@@ -953,16 +953,16 @@ ipv4_rps_out:
 			struct tcphdr *th = NULL;
 			struct udphdr *uh = NULL;
 			union {
-			        uint32_t ports;
-			        uint16_t port[2];
+				uint32_t ports;
+				uint16_t port[2];
 			} tp_ports;
 
 			if (m->m_flags & M_FLOWID)
 				goto ipv6_rps_out;
 
-                        ip6 = mtod(m, struct ip6_hdr *);
+			ip6 = mtod(m, struct ip6_hdr *);
 
-                        switch (ip6->ip6_nxt){
+			switch (ip6->ip6_nxt){
 			case IPPROTO_TCP:
 				th = (struct tcphdr *)((caddr_t)ip6 + sizeof(struct ip6_hdr));
 				tp_ports.port[0] = th->th_sport;
@@ -978,8 +978,7 @@ ipv4_rps_out:
 			}
 
 			m->m_pkthdr.flowid = jhash_3words(ip6->ip6_src.s6_addr32[0],
-							  ip6->ip6_dst.s6_addr32[0],
-							  tp_ports.ports, jhash_initval);
+			    ip6->ip6_dst.s6_addr32[0], tp_ports.ports, jhash_initval);
 			m->m_flags |= M_FLOWID;
 		}
 ipv6_rps_out:
